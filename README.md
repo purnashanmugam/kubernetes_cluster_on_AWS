@@ -17,13 +17,13 @@ pip install ansible
 ```
 openssl rand -base64 2048 > vault_k8s.pass
 ansible-vault create group_vars/all/pass.yml --vault-password-file vault_k8s.pass
-
+```
 5) Add your AWS credentials in pass.yml
 ```
 access_key: #######
 secret_key: #######
-
+```
 Run your Ansible Playbook
 ```
 ansible-playbook setup.yml --vault-password-file vault_k8s.pass
-
+```
