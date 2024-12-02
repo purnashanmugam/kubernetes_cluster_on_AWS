@@ -1,0 +1,136 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for k8s_slave
+- name: Update apt package index
+  apt:
+    update_cache: yes
+
+- name: Install necessary packages for Docker
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+    state: present
+    
+- name: Disable swap since kubernetes can't work with swap enabled
+  command: swapoff -a
+
+- name: Disable swap permanently, persist reboots
+  replace:
+    path: /etc/fstab
+    regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+    replace: '#\1\2\3swap\4'
+    backup: yes
+
+- name: Add Docker's official GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+    keyring: /etc/apt/trusted.gpg.d/docker.gpg
+
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+    state: present
+
+- name: Update apt package index again
+  apt:
+    update_cache: yes
+
+- name: Install Docker
+  apt:
+    name: docker.io
+    state: present
+
+- name: Install iproute-tc
+  apt:
+    name: iproute2
+    state: present
+
+     
+- name: Update and upgrade apt packages
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+
+- name: Ensure directory for apt keyrings exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Kubernetes APT repository
+  copy:
+    content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    mode: '0644'
+
+- name: Download and save Kubernetes GPG key
+  ansible.builtin.shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Update apt package index
+  apt:
+    update_cache: yes
+    
+- name: Install Kubernetes components
+  apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+
+- name: "Enabling the docker and kubenetes"
+  service:
+     name: "{{ item }}"
+     state: started
+     enabled: yes
+  loop:
+        - kubelet
+        - docker
+
+- name: "Pulling the config images"
+  shell: kubeadm config images pull
+
+- name: "Confuring the docker daemon.json file"
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+      "exec-opts": ["native.cgroupdriver=systemd"]
+      }
+
+- name: "Restarting the docker service"
+  service:
+     name: docker
+     state: restarted
+
+- name: "Configuring the Ip tables and refreshing sysctl"
+  copy:
+    dest: /etc/sysctl.d/k8s.conf
+    content: |
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.bridge.bridge-nf-call-iptables = 1
+
+- name: "systemctl"
+  shell: "sysctl --system"
+
+- name: "Display hostvars"
+  debug:
+    var: hostvars
+
+- name: joining to Master
+  command: "{{ hostvars[groups['ec2_master'][0]]['token']['stdout'] }}"
+
+#- name: joining to Master
+#  command: >
+#    kubeadm join 172.31.9.13:6443 
+#    --token yjlh9j.1tm8ogdu18p152h7 
+#    --discovery-token-ca-cert-hash sha256:fb1bb459d1a2478d560defe41f1e1f386ad7053ff89c35261700a5a6086b6cda 

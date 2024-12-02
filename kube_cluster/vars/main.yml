@@ -1,0 +1,18 @@
+#SPDX-License-Identifier: MIT-0
+---
+# vars file for kube_cluster
+
+instance_tag:
+        - master
+        - slave1
+        - slave2
+
+lib_names:
+        - boto
+        - boto3
+
+sg_name: Allow_All_SG
+region_name: us-east-1
+ami_id: ami-0866a3c8686eaeeba
+keypair: ansible-key-pair
+instance_flavour: t2.micro

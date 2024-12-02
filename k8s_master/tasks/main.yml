@@ -1,0 +1,141 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for k8s_master
+
+- name: Update apt package index
+  apt:
+    update_cache: yes
+    
+- name: Disable swap since kubernetes can't work with swap enabled
+  command: swapoff -a
+
+- name: Disable swap permanently, persist reboots
+  replace:
+    path: /etc/fstab
+    regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+    replace: '#\1\2\3swap\4'
+    backup: yes
+
+- name: Install necessary packages for Docker
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+    state: present
+
+- name: Add Docker's official GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+    keyring: /etc/apt/trusted.gpg.d/docker.gpg
+
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+    state: present
+
+- name: Update apt package index again
+  apt:
+    update_cache: yes
+
+- name: Install Docker
+  apt:
+    name: docker.io
+    state: present
+
+- name: Install iproute-tc
+  apt:
+    name: iproute2
+    state: present
+
+     
+- name: Update and upgrade apt packages
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+
+- name: Ensure directory for apt keyrings exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Kubernetes APT repository
+  copy:
+    content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    mode: '0644'
+
+- name: Download and save Kubernetes GPG key
+  ansible.builtin.shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Update apt package index
+  apt:
+    update_cache: yes
+    
+- name: Install Kubernetes components
+  apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+
+- name: "Enabling the docker and kubenetes"
+  service:
+     name: "{{ item }}"
+     state: started
+     enabled: yes
+  loop:
+    - kubelet
+    - docker
+    
+- name: "Confuring the docker daemon.json file"
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+      "exec-opts": ["native.cgroupdriver=systemd"]
+      }
+
+- name: "Restarting the docker service"
+  service:
+     name: docker
+     state: restarted
+
+- name: "Pulling the config images"
+  shell: kubeadm config images pull
+
+
+- name: "Starting kubeadm service"
+  shell: "kubeadm init --pod-network-cidr=10.244.0.0/16  --ignore-preflight-errors=all"
+
+- name: "Creating .kube Directory"
+  file:
+     path: $HOME/.kube
+     state: directory
+
+- name: "Copying file config file"
+  shell: "cp -i /etc/kubernetes/admin.conf $HOME/.kube/config"
+  ignore_errors: yes
+  
+- name: Doing some required thing
+  shell: "chown $(id -u):$(id -g) $HOME/.kube/config"
+
+- name: "Installing Addons e.g flannel"
+  shell: "kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml"
+
+- name: "Creating the token"
+  shell: "kubeadm token create --print-join-command"
+  register: token
+
+- debug:
+       msg: "{{ token.stdout }}"
+       

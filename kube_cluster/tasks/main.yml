@@ -1,0 +1,75 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for kube_cluster
+- name: Installing boto & boto3 libraries
+  pip:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ lib_names }}"
+  
+- name: Creating Security Group for K8s Cluster
+  ec2_group:
+    name: "{{ sg_name }}"
+    description: Security Group for allowing all port
+    region: "{{ region_name }}"
+    aws_access_key: "{{ access_key }}"
+    aws_secret_key: "{{ secret_key }}"
+    rules:
+    - proto: all
+      cidr_ip: 0.0.0.0/0
+    rules_egress:
+    - proto: all
+      cidr_ip: 0.0.0.0/0
+      
+- name: Launching three EC2 instances on AWS
+  amazon.aws.ec2_instance:
+    name: "{{ item }}"
+    key_name: "{{ keypair }}"
+    instance_type: "{{ instance_flavour }}"
+    image_id: "{{ ami_id }}"
+    wait: true
+    security_groups: "{{ sg_name }}"
+    network:
+      assign_public_ip: true
+    region: "{{ region_name }}"
+    state: present
+    aws_access_key: "{{ access_key }}"
+    aws_secret_key: "{{ secret_key }}"
+    tags:
+      environment: "{{ item }}"
+  register: ec2_instances
+  loop: "{{ instance_tag }}"
+
+- name: Display information about launched instances
+  debug:
+    var: ec2_instances
+
+- name: Add 1st instance to host group ec2_master
+  add_host:
+    hostname: "{{ ec2_instances.results[0].instances[0].public_ip_address }}"
+    groupname: ec2_master
+
+- name: Add 2nd instance to host group ec2_slave
+  add_host:
+    hostname: "{{ ec2_instances.results[1].instances[0].public_ip_address }}"
+    groupname: ec2_slave
+
+- name: Add 3rd instance to host group ec2_slave
+  add_host:
+    hostname: "{{ ec2_instances.results[2].instances[0].public_ip_address }}"
+    groupname: ec2_slave
+
+- name: Waiting for SSH
+  wait_for:
+    host: "{{ ec2_instances.results[0].instances[0].public_dns_name }}"
+    port: 22
+    state: started
+    
+    
+- name: Copy SSH key to remote server without host key checking
+  ansible.builtin.shell: >
+    ssh-copy-id -f 
+    -o IdentityFile=/home/wsl/ansible-key-pair.pem
+    -o StrictHostKeyChecking=no
+    ubuntu@{{ item.instances[0].public_ip_address }}
+  loop: "{{ ec2_instances.results }}"
