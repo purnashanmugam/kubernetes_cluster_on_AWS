@@ -3,6 +3,8 @@ Use Case:
   Create Ansible Playbook to launch 3 AWS EC2 Instance
   Create Ansible Playbook to configure Docker over those instances
   Create Playbook to configure K8S Master, K8S Worker Nodes on the above created EC2 Instances using kubeadm
+
+
 Pre-requisites:
 1) Controller node should be installed with python 3.12.3, pip 24.0, ansible 11.0.0
 ```
