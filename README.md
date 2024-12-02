@@ -10,7 +10,7 @@ sudo apt update
 sudo apt install python3
 sudo apt install python3-pip
 pip install ansible
-
+```
 2) Create one IAM user having Administrator Access and note down their access key and secret key
 3) Create one Key pair in (.pem) format on AWS Cloud, download it in your local
 4)Create a password for vault.
